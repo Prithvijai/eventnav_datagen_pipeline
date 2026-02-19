@@ -65,16 +65,17 @@ void NavBagVisNode::eventCallback(const event_camera_msgs::msg::EventPacket::Sha
         "Decoded %zu events from first %s packet", event_buffer_.size(), msg->encoding.c_str());
     
     const uint64_t window_us = 50000;
-    uint64_t t_start = std::numeric_limits<uint64_t>::max();
-    uint64_t t_end = 0;
+    uint64_t t_packet_start = std::numeric_limits<uint64_t>::max();
+    uint64_t t_packet_end = 0;
     for (const auto& e : event_buffer_) {
-        if (e.t < t_start) t_start = e.t;
-        if (e.t > t_end) t_end = e.t;
+        if (e.t < t_packet_start) t_packet_start = e.t;
+        if (e.t > t_packet_end) t_packet_end = e.t;
     }
 
+    uint64_t t_curr = t_packet_start;
     size_t idx = 0;
-    while (t_start < t_end) {
-        uint64_t t_window_end = t_start + window_us;
+    while (t_curr < t_packet_end) {
+        uint64_t t_window_end = t_curr + window_us;
         std::vector<Event> window_events;
 
         // Collect events in the current window
@@ -84,13 +85,17 @@ void NavBagVisNode::eventCallback(const event_camera_msgs::msg::EventPacket::Sha
         }
 
         if (!window_events.empty()) {
-            publishVoxelGrid(window_events, msg->header);
+            auto window_header = msg->header;
+
+            int64_t offset_ns = (t_curr - t_packet_start) * 1000; 
+
+            rclcpp::Time base_time(msg->header.stamp);
+            window_header.stamp = (base_time + rclcpp::Duration::from_nanoseconds(offset_ns));
+            publishVoxelGrid(window_events, window_header);
         }
 
-        t_start = t_window_end;
+        t_curr = t_window_end;
     }
-
-
 }
 
 
